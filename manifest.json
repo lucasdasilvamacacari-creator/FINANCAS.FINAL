@@ -1,39 +1,28 @@
 {
-  "name": "Dominus Finance",
+  "name": "Dominus Finance — controle financeiro pessoal",
   "short_name": "Dominus",
-  "description": "Controle financeiro pessoal simples, bonito e offline.",
-  "start_url": "/",
-  "scope": "/",
+  "description": "Controle financeiro com login protegido, plano de metas, orçamento por categoria, carteira de investimentos, bloco de notas e histórico de versões. Funciona offline e não envia seus dados para servidor nenhum.",
+  "start_url": "./",
+  "scope": "./",
+  "id": "dominus-finance",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#0D0D0D",
   "theme_color": "#0D0D0D",
   "orientation": "portrait-primary",
   "lang": "pt-BR",
-  "categories": ["finance", "productivity"],
+  "dir": "ltr",
+  "categories": ["finance", "productivity", "utilities"],
+  "prefer_related_applications": false,
   "icons": [
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Novo lançamento", "short_name": "Lançar", "url": "./?acao=lancar", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Minhas metas", "short_name": "Metas", "url": "./?pagina=metas", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Notas", "short_name": "Notas", "url": "./?pagina=notas", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
   ]
 }

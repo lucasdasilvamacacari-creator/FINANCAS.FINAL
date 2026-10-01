@@ -1,87 +1,117 @@
-/* ═══════════════════════════════════════════════════
-   Dominus Finance — Service Worker v1.0
-   Estratégia: Cache First para assets estáticos,
-   Network First para requests externos (fontes CDN).
-═══════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   Dominus Finance — SERVICE WORKER v3
+   Estratégia:
+     · app shell (HTML/CSS/JS/ícones) → cache primeiro, atualiza
+       em segundo plano, então abre instantâneo e offline;
+     · fontes do Google → cache primeiro, são imutáveis;
+     · cotações (brapi) → sempre rede, nunca cache: preço velho
+       servido como novo seria pior que nenhum preço.
+═══════════════════════════════════════════════════════════════ */
 
-const CACHE_NAME   = 'dominus-v1';
-const CACHE_STATIC = 'dominus-static-v1';
+const VERSION = 'v3.0.0';
+const SHELL = 'dominus-shell-' + VERSION;
+const FONTS = 'dominus-fonts-v1';
 
-// Arquivos que serão cacheados na instalação
-const STATIC_FILES = [
+const SHELL_FILES = [
   './',
   './index.html',
   './manifest.json',
+  './css/app.css',
+  './js/core.js',
+  './js/vault.js',
+  './js/finance.js',
+  './js/charts.js',
+  './js/insights.js',
+  './js/auth.js',
+  './js/ui.js',
+  './js/screens-auth.js',
+  './js/screens-money.js',
+  './js/screens-plan.js',
+  './js/screens-extra.js',
+  './js/app.js',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
-/* ── INSTALL: pré-cacheia os arquivos estáticos ── */
+/* ── INSTALL ── */
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_STATIC).then(cache => {
-      console.log('[SW] Pre-caching static files');
-      return cache.addAll(STATIC_FILES);
-    })
+    caches.open(SHELL).then(cache =>
+      /* um arquivo que falhe não pode abortar a instalação inteira */
+      Promise.all(SHELL_FILES.map(url =>
+        cache.add(new Request(url, { cache: 'reload' }))
+          .catch(err => console.warn('[SW] não cacheei', url, err))
+      ))
+    ).then(() => self.skipWaiting())
   );
-  self.skipWaiting(); // ativa imediatamente sem esperar o antigo SW terminar
 });
 
-/* ── ACTIVATE: limpa caches antigos ── */
+/* ── ACTIVATE ── */
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
-        keys
-          .filter(key => key !== CACHE_STATIC && key !== CACHE_NAME)
-          .map(key => {
-            console.log('[SW] Deleting old cache:', key);
-            return caches.delete(key);
-          })
-      )
-    )
+    caches.keys()
+      .then(keys => Promise.all(
+        keys.filter(k => k !== SHELL && k !== FONTS).map(k => caches.delete(k))
+      ))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim(); // assume controle imediato das páginas abertas
 });
 
-/* ── FETCH: Cache First para assets locais, Network First para externos ── */
+/* ── FETCH ── */
 self.addEventListener('fetch', event => {
   const { request } = event;
-  const url = new URL(request.url);
-
-  // Ignora requisições não-GET
   if (request.method !== 'GET') return;
 
-  // Para assets do mesmo domínio (app shell): Cache First
-  if (url.origin === self.location.origin) {
-    event.respondWith(
-      caches.match(request).then(cached => {
-        if (cached) return cached;
+  let url;
+  try { url = new URL(request.url); } catch { return; }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
 
-        // Não estava no cache — busca na rede e cacheia
-        return fetch(request).then(response => {
-          if (!response || response.status !== 200) return response;
-          const clone = response.clone();
-          caches.open(CACHE_STATIC).then(cache => cache.put(request, clone));
-          return response;
-        }).catch(() => {
-          // Fallback offline: retorna index.html para navegação
-          if (request.headers.get('accept')?.includes('text/html')) {
-            return caches.match('./index.html');
-          }
-        });
-      })
+  /* cotações: rede e nada mais */
+  if (url.hostname.endsWith('brapi.dev')) return;
+
+  /* fontes: cache primeiro (imutáveis) */
+  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
+    event.respondWith(
+      caches.match(request).then(hit => hit || fetch(request).then(res => {
+        if (res && res.status === 200) {
+          const copy = res.clone();
+          caches.open(FONTS).then(c => c.put(request, copy));
+        }
+        return res;
+      }).catch(() => hit))
     );
     return;
   }
 
-  // Para recursos externos (fontes Google, Tailwind CDN): Network First com fallback de cache
-  event.respondWith(
-    fetch(request)
-      .then(response => {
-        if (!response || response.status !== 200) return response;
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
-        return response;
+  /* app shell: cache primeiro + revalidação em segundo plano */
+  if (url.origin === self.location.origin) {
+    event.respondWith(
+      caches.match(request).then(hit => {
+        const network = fetch(request).then(res => {
+          if (res && res.status === 200 && res.type === 'basic') {
+            const copy = res.clone();
+            caches.open(SHELL).then(c => c.put(request, copy));
+          }
+          return res;
+        }).catch(() => null);
+
+        if (hit) { event.waitUntil(network); return hit; }
+
+        return network.then(res => {
+          if (res) return res;
+          /* offline e fora do cache: devolve o app shell para
+             qualquer navegação, que o roteamento é no cliente */
+          if (request.mode === 'navigate' ||
+              (request.headers.get('accept') || '').includes('text/html')) {
+            return caches.match('./index.html');
+          }
+          return new Response('', { status: 504, statusText: 'offline' });
+        });
       })
-      .catch(() => caches.match(request)) // fallback para versão cacheada
-  );
+    );
+  }
+});
+
+self.addEventListener('message', event => {
+  if (event.data === 'skip-waiting') self.skipWaiting();
 });
